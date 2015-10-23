@@ -1,0 +1,7 @@
+[package]
+authors = ["Daniel Atkinson <hourd.tasa@gmail.com>"]
+name = "app"
+version = "0.1.0"
+
+[dependencies]
+iron = "0.2.3"
