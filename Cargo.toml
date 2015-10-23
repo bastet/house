@@ -4,6 +4,8 @@ name = "app"
 version = "0.1.0"
 
 [dependencies]
+bodyparser = "0.0.6"
 iron = "0.2.3"
 router = "0.0.15"
+rustc-serialize = "0.3.16"
 url = "0.2.37"
