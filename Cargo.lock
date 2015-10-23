@@ -4,8 +4,11 @@ version = "0.1.0"
 dependencies = [
  "bodyparser 0.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "iron 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rand 0.3.11 (registry+https://github.com/rust-lang/crates.io-index)",
  "router 0.0.15 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rusqlite 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "rustc-serialize 0.3.16 (registry+https://github.com/rust-lang/crates.io-index)",
+ "time 0.1.33 (registry+https://github.com/rust-lang/crates.io-index)",
  "url 0.2.37 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -17,6 +20,11 @@ dependencies = [
  "winapi 0.2.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "winapi-build 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
+
+[[package]]
+name = "bitflags"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "bitflags"
@@ -155,6 +163,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "libsqlite3-sys"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "libc 0.1.10 (registry+https://github.com/rust-lang/crates.io-index)",
+ "pkg-config 0.3.6 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "log"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -262,6 +279,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "iron 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "route-recognizer 0.1.11 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "rusqlite"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "bitflags 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.1.10 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libsqlite3-sys 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "time 0.1.33 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
