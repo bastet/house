@@ -14,7 +14,7 @@ use iron::middleware::{ BeforeMiddleware };
 use rusqlite::{ SqliteConnection, SqliteResult };
 
 mod models;
-use models::{ ConnectionKey, SqliteConnector };
+use models::{ ConnectionKey, SqliteConnector, prepare_database };
 
 mod handlers;
 use handlers::{ token_handler, redirect_handler, register_handler, reconfigure_handler };
@@ -25,11 +25,7 @@ fn open_db_connection() -> SqliteResult<SqliteConnection> {
 
 fn main() {
     // Open new sqlite connection with a flag to allow multi-threading
-    let conn = open_db_connection().expect("Failed to open db connection (main)");
-    conn.execute("CREATE TABLE IF NOT EXISTS tokens (
-        id              INTEGER PRIMARY KEY,
-        time_created    INTEGER
-    )", &[]).unwrap();
+    let conn = prepare_database(open_db_connection().expect("Failed to open db connection (main)"));
 
     let router = router!(
         get "/token" => token_handler,

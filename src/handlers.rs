@@ -15,7 +15,7 @@ use rand::Rng;
 use time::get_time;
 use std::io::{Error, ErrorKind};
 
-use models::{ Register, Reconfigure, Token, ConnectionKey };
+use models::{ Register, Reconfigure, ConnectionKey, IpMapping };
 
 fn iron_err_from_string(err: &str) -> IronResult<Response> {
     Err(IronError::new(Error::new(ErrorKind::Other, err), status::InternalServerError))
@@ -24,7 +24,6 @@ fn iron_err_from_string(err: &str) -> IronResult<Response> {
 /// # Generate new request tokens
 /// other API endpoints require a valid token stored in the database, hitting this endpoint generates and returns a new token (as well as stores it in the database for later validation)
 pub fn token_handler(req: &mut Request) -> IronResult<Response> {
-
     //Create a RNG, early exit if fail
     let mut rng = match OsRng::new() {
         Ok(rng) => rng,
@@ -53,19 +52,49 @@ pub fn token_handler(req: &mut Request) -> IronResult<Response> {
         //Error!
         Err(err) => Err(IronError::new(err, status::InternalServerError))
     }
-
 }
 
 pub fn redirect_handler(req: &mut Request) -> IronResult<Response> {
+
+    //Get the SQL connection, early exit if fail
+    let conn = match req.extensions.get::<ConnectionKey>() {
+        Some(conn) => conn,
+        None => return iron_err_from_string("No SQL Connection")
+    };
+
+    //Prepare a query to lookup IP
+    let mut stmt = match conn.prepare("SELECT internal_ip, internal_port FROM redirects WHERE public_ip = ?") {
+        Err(err) => return Err(IronError::new(err, status::InternalServerError)),
+        Ok(stmt) => stmt
+    };
+
+    //Convert IP address to a integer
+    let ip = req.remote_addr.to_string();
+
+    //Lookup the correct URL to redirect to based on the origin IP
+    let optionalAddr = match stmt.query_map(&[&ip], |row| { IpMapping { ip: row.get::<String>(0), port: row.get::<i32>(1) } } ) {
+        Err(err) => return Err(IronError::new(err, status::InternalServerError)),
+        Ok(mut result) => result.nth(0)
+    };
+
+    //The nth item may not exist, so we need to unwrap that
+    let addrResult = match optionalAddr {
+        None => return Err(IronError::new(Error::new(ErrorKind::Other, "No mapping found for this address"), status::NotFound)),
+        Some(addr) => addr
+    };
+
+    //The nth item may have been an error, so we need to unwrap that
+    let addr = match addrResult {
+        Err(err) => return Err(IronError::new(err, status::InternalServerError)),
+        Ok(result) => result
+    };
+
     // Create a mutable clone of the request url
-    let ref incoming_url_ref = req.url;
-    let mut incoming_url = incoming_url_ref.clone();
-    // Change url host to a looked up address while maintaining the rest of the url
-    // TODO: Actually look up the correct address to use
-    incoming_url.host = Host::Domain(String::from("github.com"));
-    // Setting port ot 80 as default as port is currently unknown
-    // TODO: look up correct port to use
-    incoming_url.port = 80;
+    // Change url host to a looked up address while maintaining the rest of the request
+    let mut incoming_url = req.url.clone();
+    incoming_url.host = Host::Domain(addr.ip);
+    incoming_url.port = addr.port as u16;
+
     Ok(Response::with((status::TemporaryRedirect, Redirect(incoming_url))))
 }
 
