@@ -14,6 +14,7 @@ use rand::os::OsRng;
 use rand::Rng;
 use time::get_time;
 use std::io::{Error, ErrorKind};
+use std::net::SocketAddr::{ V4, V6 };
 
 use models::{ Register, Reconfigure, ConnectionKey, IpMapping };
 
@@ -68,9 +69,12 @@ pub fn redirect_handler(req: &mut Request) -> IronResult<Response> {
         Ok(stmt) => stmt
     };
 
-    //Convert IP address to a integer
-    let ip = req.remote_addr.to_string();
-
+    //Convert IP address to a string
+    let ip = match req.remote_addr {
+        V4(addr) => addr.ip().to_string(),
+        V6(addr) => addr.ip().to_string()
+    };
+    
     //Lookup the correct URL to redirect to based on the origin IP
     let optionalAddr = match stmt.query_map(&[&ip], |row| { IpMapping { ip: row.get::<String>(0), port: row.get::<i32>(1) } } ) {
         Err(err) => return Err(IronError::new(err, status::InternalServerError)),
