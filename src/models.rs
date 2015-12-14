@@ -4,8 +4,14 @@ use rusqlite::SqliteConnection;
 
 #[derive(Debug, Clone, RustcDecodable)]
 pub struct Register {
+
+    /// public key of this hub (will be used to control reconfigure this redirect)
     pub key: String,
+
+    /// Invite code to consume
     pub invite: String,
+
+    /// URL to redirect to
     pub url: String
 }
 
@@ -37,7 +43,7 @@ pub fn prepare_database(conn: SqliteConnection) -> SqliteConnection {
 
     //Create redirect table
     conn.execute("CREATE TABLE IF NOT EXISTS redirects (
-        id              INTEGER PRIMARY KEY,
+        id              INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
         public_ip       STRING,
         time_created    INTEGER,
         internal_ip     String,
@@ -46,9 +52,9 @@ pub fn prepare_database(conn: SqliteConnection) -> SqliteConnection {
 
     //Create users table
     conn.execute("CREATE TABLE IF NOT EXISTS users (
-        id              INTEGER PRIMARY KEY,
-        time_created    INTEGER,
-        public_cert     BLOB
+        id              INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+        time_created    TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        public_key      BLOB
     )", &[]).expect("Failed to create users table");
 
     conn

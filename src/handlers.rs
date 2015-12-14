@@ -13,12 +13,19 @@ use url::Host;
 use rand::os::OsRng;
 use rand::Rng;
 use time::get_time;
-use std::io::{Error, ErrorKind};
+use std::io::{ Error, ErrorKind };
 use std::net::SocketAddr::{ V4, V6 };
-
+use std::error;
 use models::{ Register, Reconfigure, ConnectionKey, IpMapping };
+use rusqlite::{ SqliteConnection };
 
 fn iron_err_from_string(err: &str) -> IronResult<Response> {
+    Err(IronError::new(Error::new(ErrorKind::Other, err), status::InternalServerError))
+}
+
+fn iron_err_from_error<T>(err: T) -> IronResult<Response>
+    where T : Into<Box<error::Error + Send + Sync>>
+{
     Err(IronError::new(Error::new(ErrorKind::Other, err), status::InternalServerError))
 }
 
@@ -55,6 +62,8 @@ pub fn token_handler(req: &mut Request) -> IronResult<Response> {
     }
 }
 
+// # Redirect all requests to the appropriate hub
+// When a request comes in which is not to a known local endpoint we lookup the correct hub to redirect to (by IP address) and redirect to there
 pub fn redirect_handler(req: &mut Request) -> IronResult<Response> {
 
     //Get the SQL connection, early exit if fail
@@ -65,7 +74,7 @@ pub fn redirect_handler(req: &mut Request) -> IronResult<Response> {
 
     //Prepare a query to lookup IP
     let mut stmt = match conn.prepare("SELECT internal_ip, internal_port FROM redirects WHERE public_ip = ?") {
-        Err(err) => return Err(IronError::new(err, status::InternalServerError)),
+        Err(err) => return iron_err_from_error(err),
         Ok(stmt) => stmt
     };
 
@@ -74,22 +83,22 @@ pub fn redirect_handler(req: &mut Request) -> IronResult<Response> {
         V4(addr) => addr.ip().to_string(),
         V6(addr) => addr.ip().to_string()
     };
-    
+
     //Lookup the correct URL to redirect to based on the origin IP
-    let optionalAddr = match stmt.query_map(&[&ip], |row| { IpMapping { ip: row.get::<String>(0), port: row.get::<i32>(1) } } ) {
-        Err(err) => return Err(IronError::new(err, status::InternalServerError)),
+    let optional_addr = match stmt.query_map(&[&ip], |row| { IpMapping { ip: row.get::<String>(0), port: row.get::<i32>(1) } } ) {
+        Err(err) => return iron_err_from_error(err),
         Ok(mut result) => result.nth(0)
     };
 
     //The nth item may not exist, so we need to unwrap that
-    let addrResult = match optionalAddr {
+    let addr_result = match optional_addr {
         None => return Err(IronError::new(Error::new(ErrorKind::Other, "No mapping found for this address"), status::NotFound)),
         Some(addr) => addr
     };
 
     //The nth item may have been an error, so we need to unwrap that
-    let addr = match addrResult {
-        Err(err) => return Err(IronError::new(err, status::InternalServerError)),
+    let addr = match addr_result {
+        Err(err) => return iron_err_from_error(err),
         Ok(result) => result
     };
 
@@ -102,56 +111,58 @@ pub fn redirect_handler(req: &mut Request) -> IronResult<Response> {
     Ok(Response::with((status::TemporaryRedirect, Redirect(incoming_url))))
 }
 
+// # Register a new redirect
+// Add a new redirect to the database, requires a valid invite code to already exist in the database
 pub fn register_handler(req: &mut Request) -> IronResult<Response> {
-    let body = req.get::<bodyparser::Struct<Register>>();
-    match body {
-        Ok(Some(body)) => {
-            if !check_invite(&body.invite) {
-                return Ok(Response::with((status::Forbidden, "Invalid Invite Code")))
-            }
 
-            if !check_key(&body.key) {
-                return Ok(Response::with((status::Forbidden, "Invalid Key")))
-            }
+    //Parse the body
+    let body = match req.get::<bodyparser::Struct<Register>>() {
+        Ok(Some(body)) => body,
+        Ok(None) => return Ok(Response::with((status::NoContent, "No Content Provided"))),
+        Err(err) => return iron_err_from_error(err),
+    };
 
-            if !check_url(&body.url) {
-                return Ok(Response::with((status::BadRequest, "Invalid Url")))
-            }
+    //Get the SQL connection, early exit if fail
+    let conn = match req.extensions.get::<ConnectionKey>() {
+        Some(conn) => conn,
+        None => return iron_err_from_string("No SQL Connection")
+    };
 
-            println!("Parsed Body:\n{:?}", body);
-            match save(body.key, body.url) {
-                Ok(_) => Ok(Response::with((status::Ok, "Ok"))),
-                Err(err) => Ok(Response::with((status::InternalServerError  , err)))
-            }
-        },
-        Ok(None) => {
-            println!("Empty Body");
-            Ok(Response::with((status::NoContent, "No Content Provided")))
-        },
-        Err(err) => {
-            println!("Error: {:?}", err);
-            Ok(Response::with((status::BadRequest, "Failed to parse body")))
-        }
+    if !check_invite(&conn, &body.invite) {
+        return Ok(Response::with((status::Forbidden, "Invalid Invite Code")))
+    }
+
+    if !check_key(&body.key) {
+        return Ok(Response::with((status::Forbidden, "Invalid Key")))
+    }
+
+    if !check_url(&body.url) {
+        return Ok(Response::with((status::BadRequest, "Invalid Url")))
+    }
+
+    //Insert a new user into the database
+    match conn.execute("INSERT INTO users (public_key) VALUES ($1)", &[&body.key]) {
+        Ok(1) => Ok(Response::with((status::Ok, "Created user"))),
+        Ok(_) => iron_err_from_string("Failed to create new user"),
+        Err(err) => { println!("{:?}", err); iron_err_from_error(err) }
     }
 }
 
-pub fn reconfigure_handler(req: &mut Request) -> IronResult<Response> {
-    let body = req.get::<bodyparser::Struct<Reconfigure>>();
-    panic!()
-}
-
-fn check_invite(code: &String) -> bool {
+fn check_invite(conn: &SqliteConnection, code: &String) -> bool {
+    //todo: Implement invites (here we need to check if the given invite code exists in the database)
     return code == "Invite";
 }
 
 fn check_key(key: &String) -> bool {
-    return key == "1234567890";
+    //todo: Implement keys (here, we just need to check that the key is a valid key)
+    true
 }
 
 fn check_url(url: &String) -> bool {
     Url::parse(&url).is_ok()
 }
 
-fn save(key: String, url: String) -> Result<(), &'static str>{
-    return Err("Database not implemented")
+pub fn reconfigure_handler(req: &mut Request) -> IronResult<Response> {
+    let body = req.get::<bodyparser::Struct<Reconfigure>>();
+    panic!()
 }
